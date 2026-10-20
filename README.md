@@ -306,4 +306,3 @@ python discover.py --ping     # tüm aday modeller + Jev smoke test
 
 ## 14. Lisans
 
-Bu proje için bir lisans dosyası (LICENSE) henüz eklenmemiştir. Kullanım/lisans tercihini belirtmeniz durumunda eklenebilir.
