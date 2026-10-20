@@ -1,0 +1,87 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "timeout": {
+      "startup": 60000,
+      "catalog": 60000,
+      "execution": 1800000
+    },
+    "servers": {
+      "local-orchestra": {
+        "type": "local",
+        "command": [
+          ".venv/Scripts/python.exe",
+          "mcp_server.py"
+        ],
+        "cwd": ".",
+        "codemode": false
+      }
+    }
+  },
+  "provider": {
+    "evren": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "EVREN AI (SSB/SAYZEK)",
+      "options": {
+        "baseURL": "https://evren-llmapi.ssyz.org.tr/v1",
+        "apiKey": "{env:EVREN_LLM_API_KEY}"
+      },
+      "models": {
+        "deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash (Coder/Karar)"
+        },
+        "deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash (Router)"
+        },
+        "glm-5.3": {
+          "name": "GLM 5.3 (Brain/Council)"
+        },
+        "gemma-4-31b": {
+          "name": "Gemma 4 31B (General)"
+        },
+        "qwen3-vl-30b": {
+          "name": "Qwen3 VL 30B (Hizli/Gorsel)"
+        }
+      }
+    },
+    "openrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OpenRouter",
+      "options": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "apiKey": "{env:OPENROUTER_API_KEY}"
+      },
+      "models": {
+        "deepseek/deepseek-v4.1-flash": {
+          "name": "DeepSeek V4.1 Flash (Coder)"
+        },
+        "z-ai/glm-5.3-flashx": {
+          "name": "GLM 5.3 FlashX (Council B)"
+        }
+      }
+    },
+    "groq": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Groq",
+      "options": {
+        "baseURL": "https://api.groq.com/openai/v1",
+        "apiKey": "{env:GROQ_API_KEY}"
+      }
+    },
+    "gemini": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Google Gemini",
+      "options": {
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "apiKey": "{env:GEMINI_API_KEY}"
+      }
+    }
+  },
+  "permissions": [
+    {
+      "action": "local-orchestra_*",
+      "resource": "*",
+      "effect": "allow"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+# Rol -> model adayları (SIRAYLA denenir; hata/429/504 olursa sıradakine geçilir).
+# ============================================================================
+# SAĞLAYICI KURALI: NVIDIA NIM tamamen kaldırıldı. Tüm roller EVREN AI
+# (SSB/SAYZEK ulusal LLM geçidi) üzerinden çalışır; son yedek olarak
+# OpenRouter'ın ücretsiz (:free) modelleri kullanılır.
+#   - EVREN : https://evren-llmapi.ssyz.org.tr/v1  (EVREN_LLM_API_KEY)
+#             1 Kasım 2026'ya kadar çağrılar ücretsiz/kotadan düşmez.
+#   - Jev (TypeSafe System One) ücretlidir ve OpenRouter anahtarını kullanır.
+# ============================================================================
+# EVREN'de ölçülen gecikmeler ve yetenekler (20 Ekim 2026):
+#   deepseek-v4-flash   1.3s  1M ctx  JSON ✅ (router/decider için ideal)
+#   gemma-4-31b         1.9s  256k    JSON ✅ (general/council_b)
+#   qwen3-vl-30b        1.2s  256k    JSON ✅ (hızlı + görsel)
+#   glm-5.3             4-6s  512k    JSON ✅ (brain/council_a derin planlama)
+#   deepseek-v4.1-flash 7-12s 1M ctx  JSON ✅ (coder; en yetenekli)
+#   (Not: "qwen3.8-flash-next" bu gateway'de sunulmuyor.)
+# ============================================================================
+timeout: 60
+retries: 1
+
+providers:
+  evren:             # EVREN AI ulusal LLM geçidi (OpenAI-uyumlu)
+    base_url: https://evren-llmapi.ssyz.org.tr/v1
+    api_key_env: EVREN_LLM_API_KEY
+    timeout: 150     # glm-5.3 gibi yavaş ama güçlü modeller 60s'te kesiliyordu
+  openrouter:        # yalnızca ücretsiz (:free) yedekler + Jev (ücretli)
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    headers: {X-Title: local-orchestra}
+
+roles:
+  router:            # hızlı sınıflandırma (JSON şart) → en hızlı EVREN modelleri
+    params: {temperature: 0.0, max_tokens: 1024}
+    models:
+      - {provider: evren, model: deepseek-v4-flash}
+      - {provider: evren, model: gemma-4-31b}
+      - {provider: evren, model: qwen3-vl-30b}
+
+  brain:             # karmaşık planlama / zor sorular
+    params: {temperature: 0.4, max_tokens: 8000}
+    models:
+      - {provider: evren, model: deepseek-v4.1-flash}
+      - {provider: evren, model: deepseek-v4-flash}
+      - {provider: evren, model: glm-5.3}   # yavaş: yalnızca son çare
+      - {provider: openrouter, model: "cohere/north-mini-code:free"}
+
+  council_a:         # KURUL üyesi 1 — kıdemli yazılım uzmanı
+    label: "Kurul 1 · DeepSeek V4 Flash"
+    params: {temperature: 0.4, max_tokens: 6000}
+    models:
+      - {provider: evren, model: deepseek-v4-flash}      # hızlı + JSON güvenilir
+      - {provider: evren, model: deepseek-v4.1-flash}
+      - {provider: evren, model: glm-5.3}                # yavaş: yalnızca son çare
+
+  council_b:         # KURUL üyesi 2 — kıdemli yazılım uzmanı
+    label: "Kurul 2 · Nemotron Ultra 550B"
+    params: {temperature: 0.4, max_tokens: 6000}
+    models:
+      - {provider: openrouter, model: "nvidia/nemotron-3-ultra-550b-a55b:free"}
+      - {provider: evren, model: deepseek-v4-flash}
+      - {provider: evren, model: qwen3-vl-30b}
+
+  council_c:         # KURUL üyesi 3 — kıdemli yazılım uzmanı
+    label: "Kurul 3 · DeepSeek V4.1 Flash"
+    params: {temperature: 0.4, max_tokens: 6000}
+    models:
+      - {provider: evren, model: deepseek-v4.1-flash}
+      - {provider: evren, model: glm-5.3}
+      - {provider: evren, model: deepseek-v4-flash}
+
+  decider:           # Jev birincil karar verici; bu YALNIZCA Jev kapalıyken LLM yedeği
+    label: DeepSeek V4 Flash (yedek)
+    params: {temperature: 0.0, max_tokens: 1500}
+    models:
+      - {provider: evren, model: deepseek-v4-flash}
+      - {provider: evren, model: deepseek-v4.1-flash}
+      - {provider: evren, model: gemma-4-31b}
+
+  general:           # sıradan yazı, özet, soru-cevap
+    params: {temperature: 0.5, max_tokens: 4000}
+    models:
+      - {provider: evren, model: gemma-4-31b}
+      - {provider: evren, model: deepseek-v4-flash}
+      - {provider: evren, model: glm-5.3}
+
+  coder:             # kod yazan alt model (A4: 16000 token bütçesi)
+    params: {temperature: 0.2, max_tokens: 16000}
+    models:
+      - {provider: evren, model: deepseek-v4.1-flash}   # birincil: en yetenekli, 1M ctx
+      - {provider: evren, model: deepseek-v4-flash}     # hızlı yedek
+      - {provider: evren, model: gemma-4-31b}           # yedek coder (kuruldan alındı)
+      - {provider: evren, model: glm-5.3}
+      - {provider: openrouter, model: "cohere/north-mini-code:free"}
+
+  judge:             # Jev AI'nın LLM yedeği (ret gerekçesi / erişilemezse)
+    params: {temperature: 0.0, max_tokens: 1500}
+    models:
+      - {provider: evren, model: deepseek-v4-flash}
+      - {provider: evren, model: gemma-4-31b}
+      - {provider: evren, model: glm-5.3}
