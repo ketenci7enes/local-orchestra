@@ -1,4 +1,4 @@
-﻿# local-orchestra — Context Handoff / Devam Rehberi
+# local-orchestra — Context Handoff / Devam Rehberi
 
 > **Amaç:** Context penceresi dolduğunda yeni bir oturumun işi kaldığı yerden sürdürebilmesi için özet.
 
@@ -139,7 +139,7 @@
 
 ```bash
 # Testler
-cd local-orchestra
+cd C:\Users\enesk\local-orchestra
 .venv\Scripts\python.exe -m pytest tests/ -v
 
 # Server manuel başlatma (OpenCode bağlar)
@@ -155,11 +155,10 @@ cd local-orchestra
 
 `.env` dosyasında (proje kökünde):
 ```env
-# Anahtar değerlerini .env.example dosyasındaki isimlere göre doldurun. Ham anahtar repoda tutulmaz.
-OPENROUTER_API_KEY=<anahtar>      # Jev (System One) + tüm ':free' modeller için ZORUNLU
-NVIDIA_API_KEY=<anahtar>          # NVIDIA NIM (opsiyonel yedek)
-# GROQ_API_KEY=<anahtar>          # Opsiyonel
-# GEMINI_API_KEY=<anahtar>        # Opsiyonel
+OPENROUTER_API_KEY=sk-or-v1-...   # Jev (System One) + tüm ':free' modeller için ZORUNLU
+NVIDIA_API_KEY=nvapi-...          # NVIDIA NIM (ücretsiz) — router/brain/council/decider/general/coder/judge
+# GROQ_API_KEY=...                # GEÇERSİZ (xai-token her iki uçta da reddedildi) → devre dışı
+# GEMINI_API_KEY=...              # Kapsam dışı (ücretsiz seçim NVIDIA + OpenRouter ile sınırlandı)
 # JEV_AI_API_KEY artık KULLANILMIYOR (Jev OpenRouter üzerinden OPENROUTER_API_KEY kullanır).
 ```
 

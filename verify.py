@@ -49,8 +49,8 @@ def run_tests(root: Path, command=None, timeout: int = 180):
         # çalışmasına yol açar (geri alma + yeniden deneme senaryosu). Bu yüzden kapatıyoruz.
         env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
         r = subprocess.run(
-            command, cwd=root, capture_output=True, text=True, timeout=timeout, env=env,
-            encoding="utf-8", errors="replace"
+            command, cwd=root, stdin=subprocess.DEVNULL, capture_output=True,
+            text=True, timeout=timeout, env=env, encoding="utf-8", errors="replace"
         )
     except subprocess.TimeoutExpired:
         return False, f"Testler {timeout}s içinde bitmedi"
