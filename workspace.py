@@ -69,6 +69,39 @@ def safe_path(root: Path, rel: str) -> Path:
     return p
 
 
+def safe_read_path(root: Path, rel: str, extra_roots=None) -> Path:
+    """Okuma yolu çözümü.
+
+    `safe_path`'ten farkı: **mutlak** yolları da kabul eder. Güvenlik için:
+      * gizli dosya bileşenleri her zaman reddedilir,
+      * mutlak yol çalışma alanı içinde değilse yalnızca `extra_roots` altındaysa
+        kabul edilir (örn. ORCHESTRA_MEDIA_ROOTS ile Downloads'a izin vermek).
+    """
+    if rel is None or not str(rel).strip():
+        raise WorkspaceError("Boş yol")
+    raw = Path(str(rel)).expanduser()
+    if raw.is_absolute():
+        p = raw.resolve()
+        hit = _secret_component(p.parts)
+        if hit:
+            raise WorkspaceError(f"Gizli dosyaya erişim engellendi: {rel}")
+        root = root.resolve()
+        if p.is_relative_to(root):
+            return p
+        for extra in (extra_roots or []):
+            try:
+                if p.is_relative_to(Path(extra).expanduser().resolve()):
+                    return p
+            except (OSError, ValueError):
+                continue
+        raise WorkspaceError(
+            f"Çalışma alanı dışındaki yola erişim engellendi: {rel}\n"
+            f"İzin vermek için ORCHESTRA_MEDIA_ROOTS ortam değişkenine kökü ekleyin "
+            f"(örn. 'C:\\Users\\<kullanıcı>\\Downloads')."
+        )
+    return safe_path(root, rel)
+
+
 # -----------------------------------------------------------------------------
 # .gitignore desteği
 # -----------------------------------------------------------------------------
@@ -386,6 +419,115 @@ def rollback(root: Path, snapshot: dict) -> None:
             shutil.copy2(backup, p)
         elif p.exists():
             p.unlink()
+
+
+# -----------------------------------------------------------------------------
+# Geçici kopyada uygula + test et (gerçek çalışma alanına dokunmadan)
+# -----------------------------------------------------------------------------
+STAGE_EXCLUDE_DIRS = EXCLUDE_DIRS | {
+    ".pytest_cache", ".ruff_cache", ".mypy_cache", ".tox", ".nox", ".next",
+    "target", "vendor", "coverage", "htmlcov", ".gradle", ".cache",
+    "backups", "runs", ".orchestra", "__snapshots__",
+}
+STAGE_CONFIG_NAMES = {
+    "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini", "noxfile.py",
+    "requirements.txt", "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "tsconfig.json", "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Makefile",
+    "ruff.toml", ".ruff.toml", "mypy.ini", ".flake8",
+}
+_STAGE_KEEP_HIDDEN = {".env.example", ".gitignore", ".editorconfig"}
+
+
+def _stage_ignore(names):
+    """copytree için ignore: hariç dizinler, gizli dosyalar, sırlar, bytecode."""
+    ignored = []
+    for n in names:
+        if n in STAGE_EXCLUDE_DIRS:
+            ignored.append(n)
+        elif n.startswith(".") and n not in _STAGE_KEEP_HIDDEN:
+            ignored.append(n)
+        elif n in ("__pycache__",) or n.endswith((".pyc", ".pyo")):
+            ignored.append(n)
+        elif is_secret(n):
+            ignored.append(n)
+    return ignored
+
+
+def _count_files(root: Path, limit: int) -> int:
+    n = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in STAGE_EXCLUDE_DIRS and not d.startswith(".")]
+        n += len(filenames)
+        if n > limit:
+            return n
+    return n
+
+
+def _copy_minimal(root: Path, dst: Path, staged: dict) -> None:
+    """Büyük projelerde yalnızca gerekli dosyaları kopyalar (config + tests + değişenler)."""
+    rels = set(staged)
+    # 1) Yapılandırma dosyaları (kök ve bir seviye alt)
+    for p in root.iterdir():
+        if p.is_file() and p.name in STAGE_CONFIG_NAMES:
+            rels.add(p.name)
+    # 2) tests/ dizini
+    tests_dir = root / "tests"
+    if tests_dir.is_dir():
+        for p in tests_dir.rglob("*"):
+            if p.is_file() and p.suffix == ".py":
+                rels.add(p.relative_to(root).as_posix())
+    # 3) Var olan test dosyaları (kök)
+    for p in root.glob("test_*.py"):
+        rels.add(p.name)
+    # 4) Değişen dosyaların kopyalanması için üst dizin yapısını oluştur
+    for rel in rels:
+        src = root / rel
+        out = dst / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_file():
+            shutil.copy2(src, out)
+
+
+def stage_to_temp(root: Path, staged: dict, max_files: int = 4000) -> tuple:
+    """Projenin geçici bir kopyasını oluşturur ve `staged` değişikliklerini uygular.
+
+    Döndürür: (geçici_dizin, mod) — mod: "full" | "minimal"
+    Çağıran `try/finally` ile dizini silmelidir (`cleanup_stage`).
+    """
+    import tempfile
+
+    root = root.resolve()
+    tmp = Path(tempfile.mkdtemp(prefix="orchestra-stage-"))
+    try:
+        n = _count_files(root, max_files)
+        mode = "full" if n <= max_files else "minimal"
+        if mode == "full":
+            shutil.copytree(root, tmp, dirs_exist_ok=True,
+                            ignore=lambda _src, names: _stage_ignore(names), symlinks=False)
+        else:
+            _copy_minimal(root, tmp, staged)
+        for rel, content in staged.items():
+            p = safe_path(tmp, rel)  # geçici kök içinde kalma garantisi
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "w", encoding="utf-8", newline="\n") as f:
+                f.write(content)
+        return tmp, mode
+    except Exception:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+
+
+def cleanup_stage(tmp: Path) -> None:
+    """Geçici kopyayı siler (hata olsa bile)."""
+    try:
+        if not tmp:
+            return
+        # Güvenlik: yalnızca orchestra-stage- önekli dizinleri sil
+        if Path(tmp).name.startswith("orchestra-stage-"):
+            shutil.rmtree(tmp, ignore_errors=True)
+    except Exception:
+        pass
+
 
 
 def _git(root: Path, *args):

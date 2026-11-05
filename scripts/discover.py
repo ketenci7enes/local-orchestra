@@ -1,6 +1,11 @@
 """Ücretsiz model keşfi ve sağlık kontrolü.
   python discover.py          -> OpenRouter ücretsiz + NVIDIA NIM model listesi
   python discover.py --ping   -> config.yaml'daki her modele küçük bir istek atar"""
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT))
 import os
 import sys
 

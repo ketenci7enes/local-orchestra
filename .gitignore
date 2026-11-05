@@ -7,3 +7,7 @@ __pycache__/
 .ruff_cache/
 opencode.json
 *.pyc
+
+# Eval harness: görev depoları make_tasks.py ile üretilir; yalnızca şablon + sonuç tablosu tutulur
+evals/tasks/
+evals/results/*.json

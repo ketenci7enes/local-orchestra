@@ -18,6 +18,12 @@
 timeout: 60
 retries: 1
 
+# Medya okuma (orchestra_read_media / run_task attach=) için çalışma alanı DIŞINDA
+# okunmasına izin verilen kökler. Boş = yalnızca çalışma alanı.
+# Örn: ["C:\\Users\\enesk\\Downloads", "C:\\Users\\enesk\\Desktop"]
+# Aynı etki: ORCHESTRA_MEDIA_ROOTS ortam değişkeni (os.pathsep ile ayrılmış).
+media_roots: []
+
 providers:
   evren:             # EVREN AI ulusal LLM geçidi (OpenAI-uyumlu)
     base_url: https://evren-llmapi.ssyz.org.tr/v1

@@ -1,10 +1,15 @@
 """Tek seferlik demo: 'kurul neden siralı calisiyor' -> Nemotron analizi -> kurula soru."""
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT))
 import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(_ROOT)
+
 
 import council  # noqa: E402
 from llm import LLMClient  # noqa: E402

@@ -22,12 +22,15 @@
 
 | Dosya | Rol |
 |-------|-----|
-| `mcp_server.py` | OpenCode MCP server (stdio transport), 11 araç exposé eder |
-| `orchestrator.py` | Ana pipeline: route → plan → implement → verify → review → write |
+| `mcp_server.py` | OpenCode MCP server (stdio transport), **17 araç** sunar |
+| `orchestrator.py` | Ana pipeline: route → plan → implement → verify → review → write (geçici kopyada test) |
 | `llm.py` | Tek OpenAI-uyumlu istemci: rol bazlı model listesi, retry, failover, cooldown |
-| `coder.py` | LLM çıktısını `<<<EDIT/FILE>>>` bloklarına parse eder, in-memory apply |
-| `workspace.py` | Güvenli yol (`safe_path`), repo map, diff, backup/rollback, git helper |
-| `verify.py` | Statik kontrol (syntax/ruff), test çalıştırma (pytest) |
+| `coder.py` | LLM çıktısını `<<<EDIT/FILE>>>` bloklarına parse eder, in-memory apply (exact/normalized/fuzzy) |
+| `workspace.py` | Güvenli yol (`safe_path`, `safe_read_path`), repo map, diff, backup/rollback, **`stage_to_temp`**, git helper |
+| `verify.py` | Statik kontrol (syntax/ruff `F+B`), **çok dilli test algılama** (pytest/npm/cargo/go/make), temiz ortam, hata özeti |
+| `media.py` | **PDF/görsel/metin → metin:** pypdfium2 metin katmanı + Windows.Media.Ocr (winocr) |
+| `symbols.py` | **Sembol haritası** (AST + regex), ilgili gövde seçimi, router dosya doğrulaması |
+| `evals/` | **Eval harness:** 20 görev, `--stub` (LLM'siz) ve gerçek LLM modu, `RESULTS.md` |
 | `router.py` | Görevi sınıflandırır: type (code/qa/...), complexity, ilgili dosyalar |
 | `council.py` | **Kurul:** 3 üye / 3 tutum öneri üretir; kazanan üye (tutumunu koruyarak) detaylı promptu yazar |
 | `brain.py` | (Eski) Karmaşık görevler için 3 alternatif strateji üretir — kurul akışında kullanılmıyor |
@@ -36,6 +39,27 @@
 | `console.py` | **Stderr log helper** — MCP stdout protokolünü korur |
 | `config.yaml` | Rol → model adayları (failover sırası), timeout, retry |
 | `opencode.json` | OpenCode MCP + provider + permission konfigürasyonu |
+
+---
+
+## 2.b Son Durum (2026-11-05) — Medya + iyileştirme yol haritası (version2E)
+
+| # | Madde | Durum | Not |
+|---|-------|-------|-----|
+| A | Eval harness (`evals/`) | ✅ | 20 görev; `run.py --stub` (LLM'siz, CI) + gerçek LLM modu; `RESULTS.md` |
+| B | Geçici kopyada uygula/test et | ✅ | `workspace.stage_to_temp`; testler geçmeden diske yazılmaz; `dry_run` gerçek test sonucu döner |
+| C | Doğrulama katmanı | ✅ | ruff `E9,F,B` (proje ayarına saygı), opsiyonel mypy, çok dilli test algılama, `summarize_failure` |
+| D | Sembol haritası | ✅ | `symbols.py`: AST (py) + regex (ts/rs/go/java), ilgili gövdeler, router seçim doğrulaması |
+| E | EDIT sağlamlığı | ✅ | exact → normalized → fuzzy; çoklu eşleşmede satır listesi; kesilmiş blok uyarısı; hedefli geri bildirim |
+| F | Güvenlik / MCP yüzeyi | ✅ | `run_tests` allowlist + kabuk operatörü reddi, onay kapısı, prompt injection ayırıcıları, log maskeleme, `safe_read_path` |
+| G | Paketleme / temizlik | ✅ | `pyproject.toml`, `LICENSE`, `scripts/`, `CHANGELOG.md`, GitHub Actions CI |
+| H | Medya (OCR/PDF) | ✅ | `media.py` + `orchestra_read_media` + `orchestra_ocr_status` + `run_task(attach=)`; `read_file` PDF/görseli otomatik çevirir |
+
+**Test durumu:** 141 test PASSED (medya, sembol, boru hattı, MCP medya dahil).
+
+**Not:** OCR için Windows `Windows.Media.Ocr` kullanılır (gömülü/ücretsiz/çevrimdışı).
+Türkçe ve İngilizce dil paketleri bu makinede mevcut (`tr`, `en-US`). Paket yoksa:
+`Add-WindowsCapability -Online -Name "Language.OCR~~~tr-TR~0.0.1.0"`.
 
 ---
 

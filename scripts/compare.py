@@ -2,6 +2,11 @@
   python compare.py general "Bu paragrafı daha sade Türkçe ile yeniden yaz: ..."
 Model seçimini tahmine değil, kendi görevlerinle ölçtüğün sonuca göre yapmak için kullan."""
 import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT))
+import sys
 import time
 
 if hasattr(sys.stdout, "reconfigure"):

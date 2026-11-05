@@ -1,5 +1,18 @@
 # local-orchestra TODO / Uygulama Planı — 2026-10-17 (REVİZE-1)
 
+> ## ✅ DURUM (2026-11-05) — Tarihsel plan tamamlandı
+> Bu dosya **tarihsel referans** olarak korunur. Güncel durum ve tamamlanan işler için
+> [`CONTEXT.md`](CONTEXT.md) §2.b ve [`CHANGELOG.md`](CHANGELOG.md) dosyalarına bakın.
+>
+> Tamamlananlar (özet): medya/OCR (`media.py` + `orchestra_read_media` + `run_task attach=`),
+> eval harness (20 görev), geçici kopyada doğrulama, güçlendirilmiş `verify`, sembol haritası,
+> esnek EDIT eşleşmesi, güvenlik kapıları (allowlist/onay/prompt-injection/log maskeleme),
+> paketleme (pyproject, LICENSE, scripts/, CI).
+>
+> **Kalan iş fikirleri:** gerçek LLM ile periyodik eval koşusu (maliyet/kota nedeniyle manuel),
+> Jev karar kalitesinin ölçümü, çoklu depo (monorepo) bağlam seçimi iyileştirmeleri.
+
+
 > ## ⚠️ REVİZYON-2 (2026-10-17) — ÜCRETLİ MODEL YASAĞI (tek istisna: Jev)
 > Aşağıdaki §0 kararları ve aday tabloları **artık geçersiz**: tüm ücretli OpenRouter modelleri
 > (`z-ai/glm-5.3-flashx`, `deepseek/deepseek-v4.1-flash`) ve `groq`/`gemini` sağlayıcıları

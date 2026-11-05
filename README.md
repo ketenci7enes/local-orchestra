@@ -204,17 +204,36 @@ OpenCode ile stdio (JSON-RPC 2.0) üzerinden haberleşir. Araçlar (FastMCP):
 
 | Araç | Açıklama |
 |---|---|
-| `orchestra_run_task` | Orkestra boru hattını çalıştırır (kurul + karar + kod + doğrulama + uygulama). Karmaşık görevlerde karar özeti döner. |
+| `orchestra_run_task` | Orkestra boru hattını çalıştırır (kurul + karar + kod + doğrulama + uygulama). `attach=` ile PDF/görsel eklenebilir. |
+| `orchestra_read_media` | PDF / görsel / metin → metin. Dijital PDF'te metin katmanı, taranmışta Windows OCR. |
+| `orchestra_ocr_status` | Windows OCR motorunu ve yüklü OCR dillerini raporlar. |
 | `orchestra_ping` | Tüm modelleri test eder (config.yaml adayları) + Jev smoke testi. |
 | `orchestra_status` | Oturum token/çağrı istatistiği (tracker). |
-| `orchestra_read_file` | Çalışma alanındaki dosyayı okur (gizli dosyalar engellenir). |
-| `orchestra_apply_edit` | Tek SEARCH/REPLACE düzenlemesi (LLM'siz). |
-| `orchestra_write_file` | Yeni dosya yaz / tamamen değiştir (LLM'siz). |
+| `orchestra_read_file` | Dosyayı okur; PDF/görselleri otomatik metne çevirir. |
+| `orchestra_apply_edit` | Tek SEARCH/REPLACE düzenlemesi (LLM'siz, `verify=true` ile test). |
+| `orchestra_write_file` | Yeni dosya yaz / tamamen değiştir (LLM'siz, `verify=true` ile test). |
+| `orchestra_read_many` | Birden çok dosyayı tek çağrıda okur. |
 | `orchestra_list_files` | Proje dosya ağacını listeler. |
+| `orchestra_glob` | Glob deseniyle dosya arar. |
 | `orchestra_search` | Kod içinde regex arama. |
-| `orchestra_run_tests` | Proje testlerini çalıştırır. |
-| `orchestra_git` | `status` / `diff` / `commit`. |
+| `orchestra_run_tests` | Testleri çalıştırır (komut allowlist'i + otomatik algılama). |
+| `orchestra_git` | `status` / `diff` / `log` / `commit`. |
+| `orchestra_undo` | Son yazma işlemini yedekten geri alır. |
 | `orchestra_review` | Sadece hakem incelemesi yapar (değişiklik uygulamaz). |
+
+### Medya / OCR
+
+`Windows.Media.Ocr` Windows 10/11'e **gömülüdür**: ücretsiz, çevrimdışı, API anahtarı
+gerektirmez. OCR dil paketi kurulu değilse araç kurulum komutunu hata mesajında döner:
+
+```powershell
+Add-WindowsCapability -Online -Name "Language.OCR~~~tr-TR~0.0.1.0"
+Add-WindowsCapability -Online -Name "Language.OCR~~~en-US~0.0.1.0"
+```
+
+Araçlar yalnızca çalışma alanı içindeki göreli yolları okur; başka klasörler için
+`ORCHESTRA_MEDIA_ROOTS` (veya `config.yaml → media_roots`) ile açık izin verin.
+
 
 `opencode.json` (lokal config) MCP sunucusunu bu script ile başlatır. Repoda **`opencode.example.json`** verilir; **`opencode.json` `.gitignore`'dadır** (her ortamın kendi yollarını kullanması için).
 
@@ -305,4 +324,29 @@ python discover.py --ping     # tüm aday modeller + Jev smoke test
 ---
 
 ## 14. Lisans
+
+MIT — bkz. [`LICENSE`](LICENSE).
+
+---
+
+## 15. Ölçüm (Eval Harness)
+
+Boru hattındaki değişiklikleri veriye dayandırmak için 20 küçük görev
+(`evals/tasks/`) ve tek komutla ölçüm altyapısı vardır:
+
+```bash
+python evals/make_tasks.py     # görev depolarını üret
+python evals/run.py --stub     # LLM'siz (CI için, referans çözümlerle harness doğrulaması)
+python evals/run.py            # gerçek LLM ile ölçüm
+```
+
+Metrikler: başarı oranı, deneme sayısı, süre, token/çağrı, düşülen aşama.
+Sonuçlar `evals/RESULTS.md` tablosuna ve `evals/results/*.json` dosyalarına yazılır.
+
+---
+
+## 16. Değişiklik Günlüğü
+
+Bkz. [`CHANGELOG.md`](CHANGELOG.md).
+
 

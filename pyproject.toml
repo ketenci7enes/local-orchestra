@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-orchestra"
+version = "0.2.0"
+description = "Local-first LLM orchestration: 3-expert council + Jev decision + coder/verify/review pipeline, plus an MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Enes Ketenci" }]
+dependencies = [
+    "mcp>=1.20",
+    "anyio>=4.0",
+    "openai>=1.30",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+    "pypdfium2>=5,<6",
+    "Pillow>=11",
+    "winocr>=0.0.15; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+orchestra = "main:main"
+
+[tool.setuptools]
+py-modules = [
+    "brain", "coder", "council", "judge", "llm", "main", "media",
+    "orchestrator", "router", "symbols", "tracker", "verify", "workspace",
+    "console",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["evals/tasks", "backups", "runs", "scripts", ".venv"]
+
+[tool.ruff.lint]
+select = ["E9", "F", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"

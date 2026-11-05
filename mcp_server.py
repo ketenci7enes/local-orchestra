@@ -145,6 +145,8 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 import orchestrator
+import media
+import verify as verify_mod
 import workspace as ws
 import coder
 from judge import Judge
@@ -170,6 +172,32 @@ def _resolve_workspace(raw: str) -> Path:
 
 WORKSPACE = _resolve_workspace(_args.workspace)
 
+
+def media_roots() -> list:
+    """Mutlak yollarla okunabilecek ek kökler.
+
+    Kaynaklar: ORCHESTRA_MEDIA_ROOTS ortam değişkeni (os.pathsep ile ayrılmış)
+    ve config.yaml içindeki `media_roots` listesi.
+    """
+    roots = [p for p in os.getenv("ORCHESTRA_MEDIA_ROOTS", "").split(os.pathsep) if p.strip()]
+    try:
+        import yaml
+        cfg_path = Path(__file__).parent / "config.yaml"
+        if cfg_path.is_file():
+            cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            extra = cfg.get("media_roots") or []
+            if isinstance(extra, str):
+                extra = [extra]
+            roots += [str(x) for x in extra if str(x).strip()]
+    except Exception:
+        pass
+    return roots
+
+
+def resolve_read_path(path: str) -> Path:
+    """Okuma yolu: göreli → çalışma alanı; mutlak → izinli kökler."""
+    return ws.safe_read_path(WORKSPACE, path, extra_roots=media_roots())
+
 # ---- LLM ve Hakem nesneleri (tek seferlik oluşturulur) ----
 # LLMClient config.yaml'ı okur; .env'den API keyleri yükler.
 # Judge: Jev AI anahtarı .env'de yoksa otomatik LLM hakeme geçer.
@@ -185,6 +213,29 @@ def _clip(text, limit: int = 1500) -> str:
     """Uzun alanları kısaltır (MCP yanıtı 10 MB sınırını aşmasın)."""
     s = str(text or "").replace("\r", "")
     return s if len(s) <= limit else s[:limit] + " …(kısaltıldı)"
+
+
+def _attach_note(notes: list) -> str:
+    """Göreve eklenen belgelerin kısa özetini başa koyar."""
+    if not notes:
+        return ""
+    return "\n".join(notes) + "\n\n"
+
+
+def post_write_verify(staged: dict) -> str:
+    """Yazma sonrası isteğe bağlı doğrulama: statik kontrol + testler."""
+    lines = []
+    problems = verify_mod.static_check(staged, WORKSPACE)
+    if problems:
+        lines.append("⚠️ Statik kontrol:\n" + "\n".join(problems[:10]))
+    else:
+        lines.append("✅ Statik kontrol temiz")
+    ok, out = verify_mod.run_tests(WORKSPACE)
+    if ok:
+        lines.append("✅ Testler geçti" + (f" ({out})" if out and len(out) < 120 else ""))
+    else:
+        lines.append("❌ Testler başarısız:\n```\n" + verify_mod.summarize_failure(out) + "\n```")
+    return "\n".join(lines)
 
 
 def _result(text: str, payload: dict = None, structured: bool = False) -> Any:
@@ -250,6 +301,36 @@ def _split_command(command: str) -> list:
     """
     tokens = shlex.split(command, posix=False)
     return [t[1:-1] if len(t) >= 2 and t[0] == t[-1] and t[0] in "\"'" else t for t in tokens]
+
+
+# -----------------------------------------------------------------------------
+# run_tests güvenlik kapısı (F): serbest komut yerine allowlist
+# -----------------------------------------------------------------------------
+ALLOWED_TEST_CMDS = {
+    "pytest", "py.test", "tox", "nox", "npm", "pnpm", "yarn", "npx", "bun",
+    "cargo", "go", "make", "ruff", "mypy", "pyright", "uv", "node", "deno",
+    "dotnet", "mvn", "gradle", "gradlew", "python", "python3", "py", "sqlfluff",
+}
+FORBIDDEN_TOKENS = ("&&", "||", ";", "|", ">", "<", "`", "$(", "rm -rf", "del /f",
+                    "format ", "curl ", "wget ", "Invoke-WebRequest", "powershell -enc",
+                    "shutdown", "reg delete", "takeown", "icacls")
+
+
+def validate_test_command(cmd: list) -> str:
+    """Komut allowlist'te mi? Sorun varsa gerekçe metni döndürür (yoksa '')."""
+    if not cmd:
+        return "Boş komut"
+    exe = Path(cmd[0]).name.lower()
+    if exe.endswith(".exe"):
+        exe = exe[:-4]
+    if exe not in ALLOWED_TEST_CMDS:
+        return (f"Komut izinli listede değil: {cmd[0]}\n"
+                f"İzinliler: {', '.join(sorted(ALLOWED_TEST_CMDS))}")
+    joined = " ".join(cmd).lower()
+    for bad in FORBIDDEN_TOKENS:
+        if bad in joined:
+            return f"Komutta güvenlik dışı ifade var: {bad!r}"
+    return ""
 
 
 def _decision_block(decision) -> str:
@@ -332,7 +413,8 @@ def _decision_block(decision) -> str:
 # =============================================================================
 @mcp.tool()
 async def orchestra_run_task(goal: str, files: str = "", complexity_hint: str = "auto",
-                             dry_run: bool = False, timeout: int = 900) -> Any:
+                             dry_run: bool = False, timeout: int = 900,
+                             attach: str = "") -> Any:
     """
     Orkestranın tam boru hattını çalıştırır:
     Sınıflandır → Kurul (3 bağımsız kıdemli yazılım uzmanı) → Jev kararı → Kod yaz → Syntax kontrol → Hakem onayla → Diske yaz
@@ -350,6 +432,9 @@ async def orchestra_run_task(goal: str, files: str = "", complexity_hint: str = 
     dry_run         : True ise değişiklikleri diske yazmaz, sadece diff önizlemesi döndürür.
     timeout         : Saniye cinsinden üst sınır (varsayılan 900). Aşılırsa görev
                       iptal edilir ve kısmi bilgi döner.
+    attach          : Göreve eklenecek belgeler (boşlukla ayrılmış yollar).
+                      PDF / görsel / metin otomatik olarak metne çevrilir
+                      (PDF: metin katmanı, taranmışsa Windows OCR).
 
     Döndürür
     --------
@@ -360,6 +445,26 @@ async def orchestra_run_task(goal: str, files: str = "", complexity_hint: str = 
     (notifications/progress); böylece istemci "dondu" sanmaz.
     """
     file_list = files.split() if files.strip() else []
+    attach_list = attach.split() if attach.strip() else []
+
+    # Ekleri event loop canlıyken (thread'e girmeden) çıkar
+    attachments = []
+    attach_notes = []
+    for raw_path in attach_list[:10]:
+        try:
+            p = resolve_read_path(raw_path)
+        except ws.WorkspaceError as e:
+            attach_notes.append(f"⚠️ {raw_path}: {e}")
+            continue
+        res = await media.extract_async(p, mode="auto", languages="", max_chars=60_000)
+        if not res.get("ok"):
+            attach_notes.append(f"⚠️ {raw_path}: {res.get('error')}")
+            continue
+        attachments.append({"path": res.get("name"), "kind": res.get("kind"),
+                            "method": res.get("method"), "text": res.get("text", "")})
+        attach_notes.append(
+            f"📎 {res.get('name')} — {res.get('method')}, {res.get('chars')} karakter, "
+            f"{res.get('elapsed_ms')} ms")
 
     # complexity_hint varsa, router sonucunu override edeceğiz
     override_complexity = complexity_hint if complexity_hint in ("simple", "complex") else None
@@ -412,6 +517,7 @@ async def orchestra_run_task(goal: str, files: str = "", complexity_hint: str = 
                         git=False,
                         complexity_override=override_complexity,
                         dry_run=dry_run,
+                        attachments=attachments,
                     ),
                     **_TO_THREAD_KW,
                 )
@@ -421,25 +527,32 @@ async def orchestra_run_task(goal: str, files: str = "", complexity_hint: str = 
         stop.set()   # heartbeat'i nazikçe durdur (task group normal kapanır)
 
     if timed_out:
-        return (f"⏱️ Görev {timeout}s içinde bitmedi (zaman aşımı).\n"
+        return _attach_note(attach_notes) + (f"⏱️ Görev {timeout}s içinde bitmedi (zaman aşımı).\n"
                 f"Not: Arka plandaki iş parçacığı iptal edilemez; model çağrısı "
                 f"kendi zaman aşımında sonlanacak.\n"
                 f"İpucu: `timeout` değerini artırın, `complexity_hint=\"simple\"` "
                 f"kullanın veya görevi daha küçük parçalara bölün.")
     if error_text:
-        return error_text
+        return _attach_note(attach_notes) + error_text
     if result is None:
-        return "❌ Orkestra beklenmedik şekilde sonuç üretmedi."
+        return _attach_note(attach_notes) + "❌ Orkestra beklenmedik şekilde sonuç üretmedi."
 
     # ---- Sonuç formatlama ----
     if "answer" in result:
         # qa / writing tipi: cevap metni döner
-        return result["answer"]
+        return _attach_note(attach_notes) + result["answer"]
 
     if result.get("ok"):
         decision_block = _decision_block(result.get("decision"))
         if result.get("dry_run"):
-            return f"🔍 Dry-run diff önizlemesi:\n{decision_block}\n{result.get('diff', '(diff yok)')}"
+            tests_block = ""
+            if "tests_ok" in result:
+                mark = "✅" if result.get("tests_ok") else "❌"
+                tests_block = (f"\n{mark} Geçici kopyada testler "
+                               f"{'geçti' if result.get('tests_ok') else 'başarısız'} — diske hiç yazılmadı")
+            return (_attach_note(attach_notes)
+                    + f"🔍 Dry-run diff önizlemesi:\n{decision_block}\n{result.get('diff', '(diff yok)')}"
+                    + tests_block)
 
         changed = result.get("files", [])
         diff = result.get("diff", "")
@@ -456,10 +569,75 @@ async def orchestra_run_task(goal: str, files: str = "", complexity_hint: str = 
         total_c = sum(s["completion"] for s in tracker.llm.values())
         total_calls = sum(s["calls"] for s in tracker.llm.values())
         lines.append(f"\n---\n📊 Token: {total_p} prompt + {total_c} completion | {total_calls} çağrı")
-        return "\n".join(lines)
+        return _attach_note(attach_notes) + "\n".join(lines)
     else:
         reason = result.get("reason", "bilinmeyen hata")
-        return f"❌ Görev başarısız: {reason}"
+        if result.get("needs_confirmation"):
+            return (_attach_note(attach_notes)
+                    + f"⛔ {reason}\n\n### Önerilen diff\n```diff\n{result.get('diff', '')}\n```")
+        return _attach_note(attach_notes) + f"❌ Görev başarısız: {reason}"
+
+
+# =============================================================================
+# ARAÇ 1b: orchestra_read_media  (PDF / görsel / metin → metin)
+# =============================================================================
+@mcp.tool()
+async def orchestra_read_media(path: str, mode: str = "auto", languages: str = "",
+                               page_from: int = 1, page_to: int = 0,
+                               max_chars: int = 50000, dpi: int = 200,
+                               text_limit: int = 4000,
+                               structured: bool = False) -> Any:
+    """
+    PDF, görsel veya metin dosyasını okunabilir metne çevirir.
+
+    * Dijital PDF  → `pypdfium2` ile **metin katmanı** (hızlı, hatasız)
+    * Taranmış PDF → sayfa render + **Windows OCR** (gömülü, çevrimdışı, ücretsiz)
+    * Görseller    → Windows OCR
+    * Metin/kod    → doğrudan okunur (UTF-8 / cp1254 otomatik)
+
+    Parametreler
+    ------------
+    path       : Dosya yolu. Göreli yollar çalışma alanına göredir; mutlak yollar
+                 yalnızca ORCHESTRA_MEDIA_ROOTS / config.yaml `media_roots` altındaysa.
+    mode       : "auto" (metin varsa metin, yoksa OCR) | "text" | "ocr" (zorla)
+    languages  : OCR dilleri, örn. "tr,en" (boş = kullanıcı profili / tr tercih)
+    page_from  : PDF başlangıç sayfası (1 tabanlı)
+    page_to    : PDF bitiş sayfası (0 = sonuna kadar)
+    max_chars  : Metin için üst sınır (MCP yanıt boyutu koruması)
+    dpi        : OCR için render çözünürlüğü (200 iyi denge)
+    text_limit : Yanıtta gösterilecek metin uzunluğu (tamamı structuredContent'te)
+    structured : True ise ek olarak JSON (structuredContent) döndürür.
+
+    İpucu: OCR dil paketi yoksa kurulum komutu hata mesajında döner.
+    """
+    try:
+        p = resolve_read_path(path)
+    except ws.WorkspaceError as e:
+        return _result(f"❌ Erişim engellendi: {e}",
+                       {"ok": False, "path": path, "error": str(e)}, structured)
+    if not p.is_file():
+        msg = f"❌ Dosya bulunamadı: {path} (çalışma alanı: {WORKSPACE})"
+        return _result(msg, {"ok": False, "path": path, "error": "not_found"}, structured)
+
+    res = await media.extract_async(
+        p, mode=mode, languages=languages, page_from=page_from, page_to=page_to,
+        max_chars=max_chars, dpi=dpi, _TO_THREAD_KW=_TO_THREAD_KW,
+    )
+    text = media.summarize(res, max_text=max(200, int(text_limit or 4000)))
+    payload = {**res, "text": res.get("text", "")}
+    return _result(text, payload, structured)
+
+
+@mcp.tool()
+async def orchestra_ocr_status(structured: bool = False) -> Any:
+    """Windows OCR motorunun kullanılabilirliğini ve yüklü OCR dillerini gösterir."""
+    st = media.ocr_status(force=True)
+    if st["ok"]:
+        text = (f"✅ Windows OCR hazır\nDiller: {', '.join(st['langs'])}\n"
+                f"Varsayılan seçim: {st['chosen']}")
+    else:
+        text = f"❌ Windows OCR kullanılamıyor\n{st['error']}"
+    return _result(text, st, structured)
 
 
 # =============================================================================
@@ -700,6 +878,16 @@ async def orchestra_read_file(path: str, offset: int = 0, limit: int = 30000,
     if not p.is_file():
         msg = f"❌ Dosya bulunamadı: {path} (çalışma alanı: {WORKSPACE})"
         return _result(msg, {"path": path, "error": "not_found", "workspace": str(WORKSPACE)}, structured)
+
+    # PDF / görsel → otomatik olarak metin çıkarımına yönlendir
+    if p.suffix.lower() in (media.PDF_EXT | media.IMAGE_EXT):
+        res = await media.extract_async(p, max_chars=max(limit, 30000),
+                                        _TO_THREAD_KW=_TO_THREAD_KW)
+        text = media.summarize(res, max_text=max(200, limit))
+        if not res.get("ok"):
+            return _result(f"❌ {text}", res, structured)
+        return _result(text, {k: v for k, v in res.items() if k != "text"} | {"content": res.get("text", "")},
+                       structured)
     try:
         content = p.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
@@ -748,7 +936,8 @@ async def orchestra_read_file(path: str, offset: int = 0, limit: int = 30000,
 # =============================================================================
 @mcp.tool()
 async def orchestra_apply_edit(path: str, search: str, replace: str,
-                               dry_run: bool = False, structured: bool = False) -> Any:
+                               dry_run: bool = False, verify: bool = False,
+                               structured: bool = False) -> Any:
     """
     Mevcut bir dosyada tek bir SEARCH/REPLACE düzenlemesi uygular.
     LLM kullanmaz; doğrudan coder.apply_in_memory + write_with_backup kullanır.
@@ -791,10 +980,16 @@ async def orchestra_apply_edit(path: str, search: str, replace: str,
                        {"path": path, "applied": False, "error": str(e)}, structured)
 
     payload = {"path": path, "applied": not dry_run, "dry_run": dry_run, "diff": diff}
+    vblock = ""
+    if verify and not dry_run:
+        vblock = "\n\n### Doğrulama\n" + await anyio.to_thread.run_sync(
+            lambda: post_write_verify(staged), **_TO_THREAD_KW)
+        payload["verification"] = vblock
     if dry_run:
         return _result(f"🔍 Dry-run — düzenleme UYGULANMADI: {path}\n\n### Diff\n```diff\n{diff}\n```",
                        payload, structured)
-    return _result(f"✅ Düzenleme uygulandı: {path}\n\n### Diff\n```diff\n{diff}\n```", payload, structured)
+    return _result(f"✅ Düzenleme uygulandı: {path}\n\n### Diff\n```diff\n{diff}\n```" + vblock,
+                   payload, structured)
 
 
 # =============================================================================
@@ -802,7 +997,7 @@ async def orchestra_apply_edit(path: str, search: str, replace: str,
 # =============================================================================
 @mcp.tool()
 async def orchestra_write_file(path: str, content: str, dry_run: bool = False,
-                               structured: bool = False) -> Any:
+                               verify: bool = False, structured: bool = False) -> Any:
     """
     Yeni dosya oluşturur veya mevcut dosyayı tamamen değiştirir.
     LLM kullanmaz; doğrudan write_with_backup kullanır.
@@ -841,10 +1036,16 @@ async def orchestra_write_file(path: str, content: str, dry_run: bool = False,
         "path": path, "written": not dry_run, "dry_run": dry_run,
         "bytes": len(body.encode("utf-8")), "diff": diff,
     }
+    vblock = ""
+    if verify and not dry_run:
+        vblock = "\n\n### Doğrulama\n" + await anyio.to_thread.run_sync(
+            lambda: post_write_verify(staged), **_TO_THREAD_KW)
+        payload["verification"] = vblock
     if dry_run:
         return _result(f"🔍 Dry-run — dosya YAZILMADI: {path}\n\n### Diff\n```diff\n{diff}\n```",
                        payload, structured)
-    return _result(f"✅ Dosya yazıldı: {path}\n\n### Diff\n```diff\n{diff}\n```", payload, structured)
+    return _result(f"✅ Dosya yazıldı: {path}\n\n### Diff\n```diff\n{diff}\n```" + vblock,
+                   payload, structured)
 
 
 # =============================================================================
@@ -1138,51 +1339,44 @@ async def orchestra_run_tests(command: str = "", timeout: int = 300,
 
     Parametreler
     ------------
-    command    : Test komutu (boş = otomatik pytest tespiti)
+    command    : Test komutu (boş = otomatik algılama: pytest / npm test / cargo test / go test / make test)
     timeout    : Saniye cinsinden üst sınır (varsayılan 300)
     structured : True ise ek olarak JSON (structuredContent) döndürür.
 
-    Not: Alt sürece stdin kapalı verilir; aksi halde stdin bekleyen testler
-    MCP sunucusunu kilitler.
+    Güvenlik: yalnızca allowlist'teki araçlar (pytest, npm, cargo, go, make …)
+    çalıştırılır; `;`, `|`, `&&`, `>` gibi kabuk operatörleri reddedilir.
+    Alt süreçlere stdin kapalı ve API anahtarları temizlenmiş ortam verilir.
     """
     if command:
         cmd = _split_command(command)
-        if not cmd:
-            return _result("❌ Boş komut", {"passed": False, "error": "empty command"}, structured)
+        problem = validate_test_command(cmd)
+        if problem:
+            return _result(f"⛔ Komut reddedildi: {problem}",
+                           {"passed": False, "error": "command_not_allowed",
+                            "detail": problem, "command": cmd}, structured)
     else:
-        # Otomatik tespit: tests/ klasörü veya test_*.py varsa pytest
-        if (WORKSPACE / "tests").is_dir() or list(WORKSPACE.glob("test_*.py")):
-            cmd = [sys.executable, "-m", "pytest", "-x", "-q", "-p", "no:cacheprovider"]
-        else:
-            msg = "⚠️  Test komutu belirtilmedi ve proje pytest yapısına sahip değil."
-            return _result(msg, {"passed": None, "error": "no test setup"}, structured)
+        cmd = None
+
+    detected, why = verify_mod.detect_test_command(WORKSPACE, prefer=cmd)
+    if detected is None:
+        msg = ("⚠️  Test komutu belirtilmedi ve proje yapısından çıkarılamadı.\n"
+               f"Çalışma alanı: {WORKSPACE}")
+        return _result(msg, {"passed": None, "error": "no test setup"}, structured)
 
     try:
-        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-        r = await anyio.to_thread.run_sync(
-            lambda: subprocess.run(
-                cmd, cwd=str(WORKSPACE), stdin=subprocess.DEVNULL,
-                capture_output=True, text=True, timeout=timeout, env=env,
-                encoding="utf-8", errors="replace",
-            )
+        ok, out = await anyio.to_thread.run_sync(
+            lambda: verify_mod.run_tests(WORKSPACE, detected, timeout=timeout),
+            **_TO_THREAD_KW,
         )
-        out = ((r.stdout or "") + (r.stderr or ""))[-4000:]
-        ok = r.returncode == 0
-        payload = {"command": cmd, "passed": ok, "returncode": r.returncode,
-                   "output_tail": out}
-        if ok:
-            return _result(f"✅ Testler geçti\n\n```\n{out}\n```", payload, structured)
-        return _result(f"❌ Testler başarısız (code={r.returncode})\n\n```\n{out}\n```",
-                       payload, structured)
-    except subprocess.TimeoutExpired:
-        return _result(f"❌ Testler {timeout}s içinde bitmedi",
-                       {"passed": False, "error": "timeout"}, structured)
-    except FileNotFoundError as e:
-        return _result(f"❌ Komut bulunamadı: {e}",
-                       {"passed": False, "error": str(e)}, structured)
     except Exception as e:
         return _result(f"❌ Hata: {type(e).__name__}: {e}",
                        {"passed": False, "error": str(e)}, structured)
+
+    payload = {"command": detected, "detected_by": why, "passed": ok,
+               "output_tail": out[-4000:] if out else ""}
+    if ok:
+        return _result(f"✅ Testler geçti ({why})\n\n```\n{out[-4000:]}\n```", payload, structured)
+    return _result(f"❌ Testler başarısız ({why})\n\n```\n{out[-4000:]}\n```", payload, structured)
 
 
 # =============================================================================

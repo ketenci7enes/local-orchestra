@@ -1,3 +1,8 @@
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT))
 import re
 
 _THINK_RE = re.compile(
@@ -6,7 +11,7 @@ _THINK_RE = re.compile(
     re.S
 )
 
-with open('tests/test_core.py', 'r', encoding='utf-8') as f:
+with open(_ROOT / 'tests/test_core.py', 'r', encoding='utf-8') as f:
     content = f.read()
 
 import re as re2
