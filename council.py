@@ -31,6 +31,8 @@ Beklentiler:
 - Üretim kalitesinde çözüm öner: tip ipuçları, hata yönetimi, kenar durumları.
 - Çözüm test edilebilir olsun; doğrulama için çalıştırılacak test/komutu belirt.
 - Emin olmadığın noktayı riskler alanında dürüstçe belirt.
+- Türkçe metin işleyen çözümlerde "İ".lower() tuzağını unutma: ASCII'ye indirme
+  gerekiyorsa ÖNCE str.translate, SONRA .lower() (tersi birleşik nokta U+0307 üretir).
 - KISA YAZ: "details" en fazla 200 kelime olsun. Uzun kod bloğu YAPMA;
   dosya + fonksiyon + değişiklik tarifi ver.
 
@@ -41,7 +43,8 @@ EXPAND_SYSTEM = """Sen kıdemli bir yazılım uzmanı ve mimarısın. KURUL'un s
 doğrudan uygulayabileceği DETAYLI bir yönergye dönüştür.
 - Hangi dosyada ne değişeceğini açıkça belirt.
 - Mevcut kodu değiştiriyorsan hedef kod parçalarını tarif et.
-- Gereksinimleri eksiksiz ve net sırala. JSON veya biçim kısıtı YOK; serbest metin yaz."""
+- Gereksinimleri eksiksiz ve net sırala. JSON veya biçim kısıtı YOK; serbest metin yaz.
+- Türkçe metin dönüşümlerinde "İ".lower() tuzağını açıkça belirt: önce str.translate, sonra .lower()."""
 
 
 def _label(llm, role: str) -> str:

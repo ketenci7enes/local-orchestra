@@ -23,6 +23,9 @@ JEV_MODEL = "typesafe/jev-1.14"
 CLOSE_CONFIDENCE = 0.30   # Jev güveni bunun altındaysa karar "yakın"
 CLOSE_PROB_GAP = 0.10     # birinci ve ikinci olasılık farkı bunun altındaysa "yakın"
 
+# Kullanıcıya uyarı gösterilecek güven eşiği (karar geçerli, ama sınırda).
+LOW_CONFIDENCE = float(os.getenv("ORCHESTRA_LOW_CONFIDENCE", "0.60"))
+
 # 4 adımlı protokolün Jev'e devredilebilen boyutları (saf Jev: metin yok, sadece oy).
 DIMENSIONS = (
     ("kapsam", "Kapsamlılık: problemdeki TÜM gereksinimleri eksiksiz karşılayan öneri hangisi?"),
@@ -53,6 +56,25 @@ def _slim(proposal: dict) -> dict:
         "details": (proposal.get("details") or "")[:1500],
         "risks": (proposal.get("risks") or "")[:1500],
     }
+
+
+def confidence_of(meta: dict):
+    """Jev meta'sından güven değeri (yoksa None)."""
+    return Judge._confidence(meta or {})
+
+
+def low_confidence_warning(meta: dict, threshold: float = None) -> str:
+    """Güven eşiğin altındaysa insan-okur uyarı metni, aksi halde ''."""
+    conf = confidence_of(meta)
+    if conf is None:
+        return ""
+    limit = LOW_CONFIDENCE if threshold is None else float(threshold)
+    if conf >= limit:
+        return ""
+    probs = (meta.get("answer_obj") or {}).get("probabilities") or {}
+    dist = ", ".join(f"{k}={v}" for k, v in probs.items()) if probs else "-"
+    return (f"⚠️ Düşük karar güveni: {conf:.2f} < eşik {limit:.2f} — seçim sınırda "
+            f"(olasılıklar: {dist}). Sonucu gözden geçirin.")
 
 
 class Judge:
@@ -292,7 +314,9 @@ class Judge:
         Jev fail-closed: geçerli karar veremezse `JevUnavailable` fırlatır.
         Tek öneri varsa karar gerektirmez (çağrı yapılmaz)."""
         ids = [str(o["id"]) for o in proposals]
-        q = "Hangi öneri hedef için teknik olarak en güvenli, uygulanabilir ve doğru?"
+        q = ("Hangi öneri hedef için teknik olarak en güvenli, uygulanabilir ve doğru? "
+             "Diğer önerilerin belirttiği geçerli riskler bu öneride GİDERİLMİŞ olmalı; "
+             "giderilmemiş ciddi bir risk taşıyan öneriyi seçme.")
 
         # Karar 6: tek öneri = kararsızlık yok (Jev/LLM'e sorulmaz).
         if len(proposals) == 1:
@@ -306,10 +330,14 @@ class Judge:
 
         if self.decide_with_jev:
             state = {"goal": (goal or "")[:4000], "proposals": [_slim(p) for p in proposals]}
+            # Kriterlerde yalnızca strateji değil RİSKLER de yer alır: Jev, bir öneriyi
+            # seçerken diğer üyelerin işaret ettiği risklerin giderilip giderilmediğini
+            # değerlendirebilsin (yoksa risk uyarıları karara hiç girmez).
             criteria = {
                 str(o["id"]): (
                     f"Öneri {o['id']} — {o.get('author_label', '')} (`{o.get('author_model', '')}`): "
-                    f"{(o.get('strategy') or '')[:1500]}"
+                    f"{(o.get('strategy') or '')[:1200]}\n"
+                    f"Belirtilen riskler: {((o.get('risks') or '').strip() or 'belirtilmedi')[:800]}"
                 )
                 for o in proposals
             }

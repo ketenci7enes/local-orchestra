@@ -215,9 +215,6 @@ def test_traversal_blocked(project):
 
 
 def test_gitignore_matcher_negation():
-    pats = ws.load_gitignore
-    import fnmatch
-
     patterns = [
         {"pattern": "*.log", "negated": False, "dir_only": False, "anchored": False},
         {"pattern": "onemli.log", "negated": True, "dir_only": False, "anchored": False},

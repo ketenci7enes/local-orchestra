@@ -7,9 +7,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import mcp_server
-import coder
-import workspace as ws
-import verify
 from mcp_server import (
     orchestra_apply_edit,
     orchestra_write_file,
@@ -20,9 +17,6 @@ from mcp_server import (
     orchestra_review,
     orchestra_read_file,
 )
-from judge import Judge
-from llm import LLMClient
-from tracker import tracker
 
 
 def _setup_temp_project():

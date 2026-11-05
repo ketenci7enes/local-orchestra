@@ -10,7 +10,7 @@ import verify
 import workspace
 from coder import ApplyError, ParseError
 from console import log
-from judge import JevUnavailable
+from judge import JevUnavailable, confidence_of, low_confidence_warning
 from llm import LLMError, cooldown_wait
 from tracker import tracker
 from workspace import WorkspaceError
@@ -159,6 +159,7 @@ def _decision_of(plan: dict) -> dict | None:
     """Plan kurul kararı içeriyorsa, karar sahibi bilgisini ayıklar."""
     if not plan.get("decided_by"):
         return None
+    meta = plan.get("jev_meta") or {}
     return {
         "decided_by": plan.get("decided_by"),
         "decider_model": plan.get("decider_model"),
@@ -170,6 +171,9 @@ def _decision_of(plan: dict) -> dict | None:
         "jev_meta": plan.get("jev_meta"),
         "jev_deep": plan.get("jev_deep"),
         "comparison": plan.get("comparison", []),
+        # Karar geçerli olsa da sınırda olabilir; kullanıcı bunu görmeli.
+        "confidence": confidence_of(meta),
+        "low_confidence_warning": low_confidence_warning(meta),
     }
 
 

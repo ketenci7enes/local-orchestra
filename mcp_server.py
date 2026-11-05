@@ -369,6 +369,11 @@ def _decision_block(decision) -> str:
     lines.append("")
     lines.append("### ⚖️ Jev'in kararı")
     lines.append(f"- **Karar veren:** {decided_by} (`{decider_model}`)")
+    conf = decision.get("confidence")
+    if conf is not None:
+        lines.append(f"- **Karar güveni:** {float(conf):.2f}")
+    if decision.get("low_confidence_warning"):
+        lines.append(f"- {decision['low_confidence_warning']}")
 
     deep = decision.get("jev_deep") or {}
     if deep.get("scores"):
@@ -1480,7 +1485,7 @@ async def orchestra_review(goal: str, diff: str) -> str:
     """
     status, reason = _judge.review(goal, diff)
     if status == "APPROVED":
-        return f"✅ **APPROVED** — Değişiklik hedefe uygun."
+        return "✅ **APPROVED** — Değişiklik hedefe uygun."
     elif status == "REJECTED":
         return f"❌ **REJECTED** — {reason}"
     else:

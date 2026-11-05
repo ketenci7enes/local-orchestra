@@ -455,7 +455,7 @@ def _stage_ignore(names):
 
 def _count_files(root: Path, limit: int) -> int:
     n = 0
-    for dirpath, dirnames, filenames in os.walk(root):
+    for _dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in STAGE_EXCLUDE_DIRS and not d.startswith(".")]
         n += len(filenames)
         if n > limit:

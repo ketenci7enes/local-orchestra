@@ -661,3 +661,53 @@ def bsearch(items, target):
     return -1
 '''),
 )
+
+
+# 21 ------------------------------------------------------------------------
+# REGRESYON: Türkçe "İ".lower() birleşik nokta (U+0307) üretir. ASCII'ye indirme
+# GEREKİYORSA önce str.translate, SONRA .lower() yapılmalı. Canlı orkestra
+# koşusunda yakalanan gerçek hata.
+add(
+    id="edge-turkish-i",
+    category="edge",
+    goal=("snake_case(text) ekle: Türkçe karakterleri ASCII'ye indirip boşlukları alt çizgi yap. "
+          "'İstanbul Çok Güzel' -> 'istanbul_cok_guzel'. Dikkat: 'İ'.lower() birleşik nokta "
+          "(U+0307) üretir; birleşik işaret ÜRETME."),
+    files={"names.py": "def snake_case(text):\n    raise NotImplementedError\n"},
+    tests=T("turkish_i", """
+from names import snake_case
+
+
+def test_istanbul():
+    out = snake_case("İstanbul Çok Güzel")
+    assert out == "istanbul_cok_guzel", repr(out)
+
+
+def test_no_combining_marks():
+    for s in ("İstanbul", "Iğdır", "Şişli", "ÇĞİÖŞÜ"):
+        out = snake_case(s)
+        bad = [hex(ord(c)) for c in out if 0x300 <= ord(c) <= 0x36F]
+        assert not bad, (s, repr(out), bad)
+
+
+def test_ascii_and_edges():
+    assert snake_case("Merhaba Dünya") == "merhaba_dunya"
+    assert snake_case(None) == ""
+    assert snake_case("") == ""
+    assert snake_case("  Çok   Boşluk ") == "cok_bosluk"
+"""),
+    blocks=F("names.py", '''
+# ÖNEMLİ: önce translate, SONRA lower. Ters sıra "İ" -> "i" + U+0307 üretir.
+_TR_ASCII = str.maketrans({
+    "Ç": "C", "Ğ": "G", "İ": "I", "Ö": "O", "Ş": "S", "Ü": "U",
+    "ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u",
+})
+
+
+def snake_case(text):
+    if not text:
+        return ""
+    s = str(text).translate(_TR_ASCII).lower()
+    return "_".join(s.split())
+'''),
+)

@@ -12,7 +12,6 @@ import orchestrator
 import workspace
 from judge import Judge, JevUnavailable
 from judge import requests as judge_requests  # judge modülünün kullandığı requests
-import judge as judge_mod
 from llm import LLMClient, LLMError, cooldown_wait
 
 

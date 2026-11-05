@@ -331,7 +331,7 @@ MIT — bkz. [`LICENSE`](LICENSE).
 
 ## 15. Ölçüm (Eval Harness)
 
-Boru hattındaki değişiklikleri veriye dayandırmak için 20 küçük görev
+Boru hattındaki değişiklikleri veriye dayandırmak için 21 küçük görev
 (`evals/tasks/`) ve tek komutla ölçüm altyapısı vardır:
 
 ```bash

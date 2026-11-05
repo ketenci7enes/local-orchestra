@@ -3,6 +3,28 @@
 Tüm önemli değişiklikler bu dosyada tutulur. Biçim: [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/),
 sürümleme: [Semantic Versioning](https://semver.org/lang/tr/).
 
+## [0.2.1] — 2026-11-06
+
+### Eklendi
+- **Araç yüzeyi testleri** (`tests/test_all_tools.py`): 17 MCP aracının tamamı için
+  (yüzey + gerçek çağrı) 35 test; LLM gereken 3 araçta yalnızca LLM/Jev katmanı taklit edilir.
+- **Karar kalitesi testleri** (`tests/test_decision_quality.py`): risk-farkında Jev
+  kriterleri, düşük güven uyarısı ve Türkçe `İ` regresyonu.
+- Eval görevi `edge-turkish-i` (21. görev): `snake_case` ve birleşik nokta (U+0307) tuzağı.
+
+### Değişti
+- **Jev kriterleri artık riskleri de içerir:** her öneri için `risks` alanı kritere eklenir
+  ve soru, diğer üyelerin işaret ettiği risklerin giderilmiş olmasını şart koşar.
+- **Düşük güven uyarısı:** karar güveni `ORCHESTRA_LOW_CONFIDENCE` (varsayılan 0.60)
+  altındaysa `run_task` çıktısında ve `_decision_block` içinde `⚠️` uyarısı gösterilir;
+  olasılık dağılımı da yazılır.
+- **Türkçe harf tuzağı prompt'lara işlendi:** coder ve kurul prompt'larında ASCII'ye
+  indirmede "önce `str.translate`, sonra `.lower()`" kuralı (aksi halde `İ` → `i` + U+0307).
+
+### Düzeltildi
+- Canlı orkestra koşusunda yakalanan `snake_case("İstanbul")` → `"i̇stanbul"` hatası,
+  referans çözüm ve regresyon testiyle kapatıldı.
+
 ## [0.2.0] — 2026-11-05
 
 ### Eklendi
@@ -11,7 +33,7 @@ sürümleme: [Semantic Versioning](https://semver.org/lang/tr/).
 - `orchestra_run_task(attach=...)`: belge/görsel ekleyerek görev çalıştırma.
 - `orchestra_read_file`: PDF ve görselleri otomatik metne çevirir.
 - `orchestra_ocr_status`: OCR motoru ve yüklü dilleri raporlar.
-- **Eval harness** (`evals/`): 20 görev, tek komutla ölçüm, `RESULTS.md` tablosu;
+- **Eval harness** (`evals/`): 21 görev, tek komutla ölçüm, `RESULTS.md` tablosu;
   LLM'siz `--stub` modu CI'da çalışır.
 - **Geçici kopyada doğrulama** (`workspace.stage_to_temp`): testler gerçek çalışma
   alanına yazmadan önce izole kopyada koşar; `dry_run` artık gerçek test sonucu döner.

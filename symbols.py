@@ -150,7 +150,7 @@ def symbol_map(root: Path, max_files: int = 200, max_chars: int = 18_000) -> str
 
 def _keywords(goal: str) -> list:
     stop = {"the", "and", "for", "with", "bir", "ve", "ile", "için", "olan", "olarak",
-            "ekle", "düzelt", "güncelle", "yap", "bir", "bu", "şu", "daha", "kod", "dosya"}
+            "ekle", "düzelt", "güncelle", "yap", "bu", "şu", "daha", "kod", "dosya"}
     words = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü_][A-Za-z0-9_ÇĞİÖŞÜçğıöşü]{2,}", goal or "")
     out = []
     for w in words:

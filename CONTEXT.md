@@ -30,7 +30,7 @@
 | `verify.py` | Statik kontrol (syntax/ruff `F+B`), **çok dilli test algılama** (pytest/npm/cargo/go/make), temiz ortam, hata özeti |
 | `media.py` | **PDF/görsel/metin → metin:** pypdfium2 metin katmanı + Windows.Media.Ocr (winocr) |
 | `symbols.py` | **Sembol haritası** (AST + regex), ilgili gövde seçimi, router dosya doğrulaması |
-| `evals/` | **Eval harness:** 20 görev, `--stub` (LLM'siz) ve gerçek LLM modu, `RESULTS.md` |
+| `evals/` | **Eval harness:** 21 görev, `--stub` (LLM'siz) ve gerçek LLM modu, `RESULTS.md` |
 | `router.py` | Görevi sınıflandırır: type (code/qa/...), complexity, ilgili dosyalar |
 | `council.py` | **Kurul:** 3 üye / 3 tutum öneri üretir; kazanan üye (tutumunu koruyarak) detaylı promptu yazar |
 | `brain.py` | (Eski) Karmaşık görevler için 3 alternatif strateji üretir — kurul akışında kullanılmıyor |
@@ -46,7 +46,7 @@
 
 | # | Madde | Durum | Not |
 |---|-------|-------|-----|
-| A | Eval harness (`evals/`) | ✅ | 20 görev; `run.py --stub` (LLM'siz, CI) + gerçek LLM modu; `RESULTS.md` |
+| A | Eval harness (`evals/`) | ✅ | 21 görev; `run.py --stub` (LLM'siz, CI) + gerçek LLM modu; `RESULTS.md` |
 | B | Geçici kopyada uygula/test et | ✅ | `workspace.stage_to_temp`; testler geçmeden diske yazılmaz; `dry_run` gerçek test sonucu döner |
 | C | Doğrulama katmanı | ✅ | ruff `E9,F,B` (proje ayarına saygı), opsiyonel mypy, çok dilli test algılama, `summarize_failure` |
 | D | Sembol haritası | ✅ | `symbols.py`: AST (py) + regex (ts/rs/go/java), ilgili gövdeler, router seçim doğrulaması |
