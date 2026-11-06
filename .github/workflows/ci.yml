@@ -41,3 +41,8 @@ jobs:
           python evals/make_tasks.py
           python evals/run.py --stub
         if: runner.os == 'Linux'
+
+      - name: MCP stdio smoke (acilis + katalog + cagri)
+        run: python scripts/mcp_smoke.py
+        env:
+          PYTHONIOENCODING: utf-8

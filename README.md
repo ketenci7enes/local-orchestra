@@ -237,6 +237,38 @@ Araçlar yalnızca çalışma alanı içindeki göreli yolları okur; başka kla
 
 `opencode.json` (lokal config) MCP sunucusunu bu script ile başlatır. Repoda **`opencode.example.json`** verilir; **`opencode.json` `.gitignore`'dadır** (her ortamın kendi yollarını kullanması için).
 
+### Bağlantı sağlığı ("MCP bazen tetiklenmiyor")
+
+Belirtiler ve nedenleri:
+
+| Belirti | Neden | Çözüm |
+|---|---|---|
+| `opencode mcp list` → `✗ failed: Request timed out` | Açılış `openai` SDK import'una takılıyordu (~3.5 s, soğuk diskte 8 s) | 0.2.2'de tembel import: açılış 1–1.8 s |
+| Loglarda **saatlik** `mcp connected` + ara sıra `Request timed out` | `location_idle_timeout` (60 dk) projeyi boşaltıp yeniden bağlanıyordu | `experimental.location_idle_timeout: false` |
+| Araçlar oturumda görünmüyor, model built-in araçlara kaçıyor | MCP kataloğu boş bağlanmış | `opencode reload`, sonra `opencode mcp list` |
+
+Tek komutla teşhis:
+
+```powershell
+python scripts/mcp_smoke.py          # OK initialize/tools/list + 2 gerçek çağrı, EXIT 0
+opencode mcp list                    # ✓ local-orchestra  connected
+```
+
+`mcp_smoke.py` sunucu tarafını (el sıkışma, katalog, çağrı) OpenCode'dan bağımsız doğrular;
+böylece sorunun sunucuda mı yoksa OpenCode bağlantısında mı olduğu ayrılır.
+
+### Modelin MCP'yi seçmesi
+
+İki katman birlikte kullanılır:
+
+1. **Sunucu talimatı** — `FastMCP(instructions=...)`. OpenCode bunu system prompt'a ekler ve
+   hangi iş için hangi aracın kullanılacağını söyler.
+2. **`~/.config/opencode/AGENTS.md`** — araç politikası tablosu + "araç hata verirse sessizce
+   built-in'e düşme" kuralı.
+
+Sert garanti gerekiyorsa `edit` iznini kapatıp yazmayı yalnızca MCP'ye bırakan bir agent
+tanımlanabilir (`permissions: [{action: "edit", resource: "*", effect: "deny"}]`).
+
 ---
 
 ## 10. Kurulum

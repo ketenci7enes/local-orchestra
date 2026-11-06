@@ -206,7 +206,30 @@ _judge = Judge(_llm, use_jev=True, decide_with_jev=True)
 
 # ---- MCP Server tanımı ----
 # "local-orchestra" → OpenCode'un araçlar listesinde görünecek isim
-mcp = FastMCP("local-orchestra")
+mcp = FastMCP(
+    "local-orchestra",
+    instructions=(
+        "local-orchestra: Bu depodaki dosya işlemleri, arama ve kod değişiklikleri için "
+        "ÖNCELİKLİ araç seti. Modelin kendi built-in edit/write/shell araçlarına düşmeden "
+        "önce buradaki araçları kullan.\n"
+        "Yönlendirme:\n"
+        "- Dosya okuma → orchestra_read_file (aralık için start_line/end_line) veya "
+        "orchestra_read_many (çok dosya).\n"
+        "- Arama/keşif → orchestra_search (regex), orchestra_glob (desen), "
+        "orchestra_list_files (ağaç).\n"
+        "- Tek dosya düzenleme → orchestra_apply_edit (birebir SEARCH/REPLACE); yeni/baştan "
+        "yazma → orchestra_write_file. Önce dry_run=true ile önizle.\n"
+        "- Test/doğrulama → orchestra_run_tests.\n"
+        "- Çok dosyalı, planlı veya mimari iş → orchestra_run_task (kurul + Jev + doğrulama "
+        "zincirini kendisi yürütür).\n"
+        "- PDF/görsel/taranmış belge → orchestra_read_media (Windows OCR); belgeyi göreve "
+        "eklemek için orchestra_run_task(attach=...).\n"
+        "- Geri alma → orchestra_undo; git → orchestra_git; çalışma kökü → orchestra_workspace.\n"
+        "Kurallar: Bir araç hata dönerse sessizce built-in araca geçme; hatayı kullanıcıya "
+        "bildir. Dosya değiştirmeden önce ilgili dosyayı oku. Değişiklikten sonra "
+        "orchestra_run_tests veya verify=true ile doğrula."
+    ),
+)
 
 
 def _clip(text, limit: int = 1500) -> str:

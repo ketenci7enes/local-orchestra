@@ -3,6 +3,25 @@
 Tüm önemli değişiklikler bu dosyada tutulur. Biçim: [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/),
 sürümleme: [Semantic Versioning](https://semver.org/lang/tr/).
 
+## [0.2.2] — 2026-11-06
+
+### Düzeltildi
+- **MCP açılış gecikmesi / "Request timed out":** `openai` SDK'si import anında ~3.5 s
+  yükleniyordu ve stdio el sıkışması OpenCode startup timeout'una düşüyordu. `llm.py` artık
+  SDK'yi tembel yükler (ilk gerçek model çağrısında). Açılış 3–8 s → **1.0–1.8 s**.
+- `mcp.timeout.startup/catalog` 60 s → 20 s: takılan bir deneme saatlerce kuyrukta beklemez.
+- `experimental.location_idle_timeout: false` (global config): 60 dakikalık unload/reconnect
+  döngüsü kapatıldı (loglarda saatlik `mcp connected` + `Request timed out` bunun belirtisiydi).
+
+### Eklendi
+- **Sunucu talimatı** (`FastMCP(instructions=...)`): OpenCode bunu system prompt'a ekler;
+  hangi iş için hangi aracın kullanılacağını ve hata durumunda built-in'e sessizce
+  düşülmemesini söyler.
+- `scripts/mcp_smoke.py`: el sıkışma + katalog + 2 gerçek çağrıyı 10 s bütçesiyle doğrular.
+  CI'da da çalışır; "MCP tetiklenmiyor" dendiğinde ilk teşhis komutu.
+- `tests/test_mcp_startup.py`: açılış süresi bütçesi, talimat varlığı ve `openai` import'unun
+  tembel olduğunu doğrulayan regresyon testleri.
+
 ## [0.2.1] — 2026-11-06
 
 ### Eklendi

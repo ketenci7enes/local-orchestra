@@ -8,10 +8,22 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
-from openai import APIConnectionError, APIStatusError, APITimeoutError, OpenAI, RateLimitError
 
 from console import log
 from tracker import tracker
+
+# `openai` SDK'si ~3.5 s'de yükleniyor (binlerce tip dosyası). MCP stdio sunucusu
+# açılışta buna takılıp OpenCode'nun startup timeout'una düşüyordu. Bu yüzden
+# tembel yüklenir: yalnızca ilk gerçek model çağrısında içe aktarılır.
+_OPENAI_MOD = None
+
+
+def _openai():
+    global _OPENAI_MOD
+    if _OPENAI_MOD is None:
+        import openai as _mod
+        _OPENAI_MOD = _mod
+    return _OPENAI_MOD
 
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
@@ -50,7 +62,7 @@ class LLMClient:
             key = os.getenv(p["api_key_env"])
             if not key:
                 raise LLMError(f"{p['api_key_env']} tanımlı değil (.env)")
-            self._clients[provider] = OpenAI(
+            self._clients[provider] = _openai().OpenAI(
                 base_url=p["base_url"],
                 api_key=key,
                 # Sağlayıcı bazlı override (ör. EVREN'de yavaş ama güçlü modeller için 150s)
@@ -111,24 +123,24 @@ class LLMClient:
                     total_calls = sum(s["calls"] for s in tracker.llm.values())
                     log(f"📊 [{cand['provider']}/{cand['model'].split('/')[-1]}] -> Context: {p_tok} tkn | Yanıt: {c_tok} tkn | Toplam Çağrı: {total_calls}")
                     return text
-                except RateLimitError as e:
+                except _openai().RateLimitError as e:
                     msg = str(e).lower()
                     self._cooldown[key] = time.time() + (3600 if "day" in msg else 60)
                     last_err = e
                     tracker.log("llm_fail", role=role, provider=cand["provider"], model=cand["model"], error=str(e)[:300])
                     break  # sıradaki aday modele geç
-                except APITimeoutError as e:
+                except _openai().APITimeoutError as e:
                     # Zaman aşımında AYNI adayı tekrar denemek sadece süreyi ikiye katlar:
                     # doğrudan sıradaki adaya geç (ör. yavaş glm-5.3 -> hızlı deepseek).
                     last_err = e
                     tracker.log("llm_fail", role=role, provider=cand["provider"], model=cand["model"], error=str(e)[:300])
                     log(f"⏱️  [{cand['provider']}/{cand['model'].split('/')[-1]}] zaman aşımı → sıradaki adaya geçiliyor")
                     break
-                except APIConnectionError as e:
+                except _openai().APIConnectionError as e:
                     last_err = e
                     tracker.log("llm_fail", role=role, provider=cand["provider"], model=cand["model"], error=str(e)[:300])
                     time.sleep(2**attempt + random.random())
-                except APIStatusError as e:
+                except _openai().APIStatusError as e:
                     last_err = e
                     if e.status_code == 400 and use_json:
                         use_json = False  # model response_format desteklemiyor olabilir
