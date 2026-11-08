@@ -3,6 +3,44 @@
 Tüm önemli değişiklikler bu dosyada tutulur. Biçim: [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/),
 sürümleme: [Semantic Versioning](https://semver.org/lang/tr/).
 
+## [0.2.4] — 2026-11-08
+
+### Düzeltildi
+- **Yetim MCP sunucusu koruması:** istemci bağlantıyı kapatırken stdio'yu
+  sonlandırmazsa `mcp_server.py` saatlerce ayakta kalıp sonraki bağlantılarla
+  karışabiliyordu. `__main__` artık üst süreci 5 s'de bir yoklar ve üst süreç
+  ölünce çıkar. `ORCHESTRA_MCP_WATCHDOG=0` ile kapatılabilir.
+- `mcp>=1.20,<2` üst sınırı: MCP SDK 2.x protokol değişikliği sürprizini engeller.
+
+### Not (teşhis)
+- `Request timed out` arızasının kök nedeni istemci tarafındaydı: OpenCode
+  **2.0.32** gecikmeli gelen `initialize` yanıtını (id 0) "unknown message ID"
+  diye attı; bağlantı 1479 s sonra timeout verdi. Sunucu sağlıklıydı
+  (el sıkışma 0.67 s, 17 araç) ve protokolü müzakere ediyordu (2024-11-05 /
+  2025-11-25). **OpenCode 2.2.6**'ya yükseltme sorunu giderdi: bağlantı ~1.6 s.
+
+## [0.2.3] — 2026-11-08
+
+### Eklendi
+- **Circuit breaker (5xx/timeout/bağlantı):** `llm.py` artık yalnızca 429'da değil, `503 "model dolu"`,
+  zaman aşımı ve bağlantı hatalarında da adayı geçici olarak devre dışı bırakır
+  (`cooldown_5xx=120s`, `cooldown_timeout=60s`, `cooldown_conn=30s`; `config.yaml` ile override).
+  Böylece aynı dolu model her çağrıda yeniden denenmez.
+- **Görünür fallback:** Birincil adaydan yedeğe düşüldüğünde `llm_fallback` olayı
+  (from/to/reason) loglanır, terminale yazılır ve `last_used[role].fallback` alanında raporlanır.
+- **Self-healing:** `orchestra_ping` bir adayı başarılı bulursa o adayın cooldown kaydını siler.
+- **Kalıcı telemetri:** `orchestra_status` artık devre dışı adayları (kalan süre + neden),
+  son fallback'leri ve `runs/*.jsonl` üzerinden **son 24 saat** özetini (çağrı, token,
+  fallback, hata, en sık fallback çiftleri) gösterir. `tracker.history()` eklendi.
+
+### Düzeltildi
+- `pyproject.toml` başındaki UTF-8 BOM kaldırıldı; `tomllib`/`pytest`/paketleme artık dosyayı okuyabiliyor.
+- `llm` log satırına `prompt_tokens`/`completion_tokens` eklendi (geçmiş token toplamı için).
+
+### Test
+- `tests/test_llm_resilience.py`: 503 fallback + cooldown, cooldown'lu adayın atlanması,
+  başarıda cooldown temizliği, tüm adaylar düşünce `LLMError`, geçmiş agregasyonu. Toplam **200 test**.
+
 ## [0.2.2] — 2026-11-06
 
 ### Düzeltildi

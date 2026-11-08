@@ -749,6 +749,9 @@ def _ping_impl(role: str = "", max_age: int = 300, refresh: bool = False):
                 status = f"⚠️ max_tokens'ta kesildi ({dt:.1f}s) — çıktı bütçesi artırılmalı"
             else:
                 status = f"✅ ({dt:.1f}s) {text[:40]}"
+            if status.startswith("✅"):
+                # Circuit breaker self-healing: sağlık kontrolü geçtiyse devre dışı kaydını sil.
+                _llm.clear_cooldown(cand["provider"], cand["model"])
         except Exception as e:
             status = f"❌ {type(e).__name__}: {str(e)[:60]}"
         return f"[**{role_name}**] `{cand['provider']}/{cand['model'].split('/')[-1]}`: {status}"
@@ -825,9 +828,29 @@ async def orchestra_status(structured: bool = False) -> Any:
             "prompt": sum(s["prompt"] for s in tracker.llm.values()),
             "completion": sum(s["completion"] for s in tracker.llm.values()),
         },
+        "cooldowns": _llm.cooldowns(),
+        "last_used": getattr(_llm, "last_used", {}),
+        "fallbacks": getattr(_llm, "fallbacks", [])[-10:],
+        "history_24h": tracker.history(24),
     }
     if not tracker.llm:
-        return _result("Henüz hiç model çağrısı yapılmadı.", payload, structured)
+        extra = []
+        cds = payload["cooldowns"]
+        if cds:
+            extra.append("### Devre dışı adaylar (circuit breaker)\n")
+            for c in cds:
+                extra.append(f"- `{c['provider']}/{c['model']}`: {c['remaining_s']:.0f}s kaldı ({c['reason']})")
+        h = payload["history_24h"]["totals"]
+        if h["calls"] or h["fallbacks"] or h["fails"]:
+            extra.append(
+                f"\n### Son 24 saat (log geçmişi)\n"
+                f"- {h['calls']} çağrı | {h['prompt']:,} prompt + {h['completion']:,} completion token\n"
+                f"- {h['fallbacks']} fallback | {h['fails']} hata"
+            )
+        msg = "Henüz bu oturumda model çağrısı yapılmadı."
+        if extra:
+            msg += "\n\n" + "\n".join(extra)
+        return _result(msg, payload, structured)
 
     lines = ["## Oturum Token İstatistikleri\n"]
     total_p, total_c, total_calls = 0, 0, 0
@@ -841,6 +864,30 @@ async def orchestra_status(structured: bool = False) -> Any:
         total_calls += s["calls"]
 
     lines.append(f"\n**Toplam:** {total_calls} çağrı | {total_p:,} prompt + {total_c:,} completion token")
+
+    cds = payload["cooldowns"]
+    if cds:
+        lines.append("\n### Devre dışı adaylar (circuit breaker)")
+        for c in cds:
+            lines.append(f"- `{c['provider']}/{c['model']}`: {c['remaining_s']:.0f}s kaldı ({c['reason']})")
+
+    fbs = payload["fallbacks"]
+    if fbs:
+        lines.append("\n### Son fallback'ler")
+        for fb in fbs[-5:]:
+            lines.append(
+                f"- [{fb.get('role')}] {fb['from']['model']} → {fb['to']['model']} "
+                f"({str(fb.get('reason'))[:90]})"
+            )
+
+    h = payload["history_24h"]
+    lines.append(
+        f"\n### Son 24 saat (log geçmişi, {h['files']} dosya)\n"
+        f"- {h['totals']['calls']} çağrı | {h['totals']['fallbacks']} fallback | {h['totals']['fails']} hata"
+    )
+    for pair, n in list(h["fallback_pairs"].items())[:3]:
+        lines.append(f"- ⚠️ {pair}: {n}×")
+
     lines.append(f"\n📄 Log: `{tracker.logfile}`")
     lines.append(f"\n📂 Çalışma alanı: `{WORKSPACE}`")
     return _result("\n".join(lines), payload, structured)
@@ -1518,6 +1565,56 @@ async def orchestra_review(goal: str, diff: str) -> str:
 # =============================================================================
 # SERVER BAŞLATMA
 # =============================================================================
+def _parent_alive(pid: int) -> bool:
+    """Üst süreç hâlâ çalışıyor mu? (Windows; diğer platformlarda True).
+
+    OpenCode bir bağlantıyı kapatırken stdio'yu her zaman sonlandırmıyor; o zaman
+    `mcp_server.py` yetim kalıp saatlerce ayakta durabiliyor ve sonraki bağlantılar
+    eski süreçlerle karışıyor. Bu watchdog yetim süreç birikmesini engeller.
+    """
+    if os.name != "nt":
+        return True
+    import ctypes
+    from ctypes import wintypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not handle:
+        return False
+    try:
+        code = wintypes.DWORD()
+        if not k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True  # emin değilsek süreci kapatma
+        return code.value == STILL_ACTIVE
+    finally:
+        k32.CloseHandle(handle)
+
+
+def _watch_parent(interval: float = 5.0) -> None:
+    """Üst süreç ölürse çık. `ORCHESTRA_MCP_WATCHDOG=0` ile kapatılabilir."""
+    parent = os.getppid()
+    if parent <= 0:
+        return
+    while True:
+        time.sleep(interval)
+        if not _parent_alive(parent):
+            print(f"[orchestra-mcp] üst süreç ({parent}) kapandı; çıkılıyor",
+                  file=sys.stderr, flush=True)
+            os._exit(0)
+
+
 if __name__ == "__main__":
     print(f"[orchestra-mcp] workspace={WORKSPACE}", file=sys.stderr, flush=True)
+    if os.getenv("ORCHESTRA_MCP_WATCHDOG", "1") != "0":
+        import threading
+        threading.Thread(target=_watch_parent, name="parent-watchdog",
+                         daemon=True).start()
     mcp.run(transport="stdio")

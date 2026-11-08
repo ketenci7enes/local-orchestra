@@ -1,17 +1,17 @@
-﻿[build-system]
+[build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-orchestra"
-version = "0.2.2"
+version = "0.2.4"
 description = "Local-first LLM orchestration: 3-expert council + Jev decision + coder/verify/review pipeline, plus an MCP server"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Enes Ketenci" }]
 dependencies = [
-    "mcp>=1.20",
+    "mcp>=1.20,<2",
     "anyio>=4.0",
     "openai>=1.30",
     "python-dotenv>=1.0",
